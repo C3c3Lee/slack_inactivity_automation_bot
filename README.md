@@ -1,6 +1,6 @@
 # Slack Bot - slack channel monitor CL
 
-API Slack : https://api.slack.com/apps/A07CJ5425LH
+API Slack : https://api.slack.com/apps/A08SLN2TZRV
 
 Initial user team ID: T07C1G6AT1Q
 

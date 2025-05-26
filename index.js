@@ -2,9 +2,10 @@ const { App, LogLevel } = require("@slack/bolt");
 require("dotenv").config();
 
 const { logBotPermissions } = require("./utils/auth");
-const { getAllChannelActivity, getChannelActivityForUser } = require("./utils/channelUtils");
+const { getAllChannelActivity } = require("./utils/channelUtils");
 const { sendPrivateMessage } = require("./utils/messageUtils");
 const { sleep } = require("./utils/rateLimiter");
+const { LOG_MESSAGES } = require("./config");
 
 const app = new App({
   token: process.env.SLACK_BOT_TOKEN,
@@ -12,14 +13,12 @@ const app = new App({
   logLevel: LogLevel.INFO,
 });
 
-const INTERVAL_IN_HOURS = 24 * 7; // 7 jours
+// Interval in hours for the report (default: 7 days)
+const INTERVAL_IN_HOURS = 24 * 7;
 const INTERVAL_IN_MS = INTERVAL_IN_HOURS * 60 * 60 * 1000;
 
-(async () => {
-  console.log("Lancement initial du bot...");
-  await getAllChannelActivity(app);
-
-  const msToHumanReadable = (ms) => {
+// Helper to convert ms to human-readable format
+const msToHumanReadable = (ms) => {
   const hours = ms / (1000 * 60 * 60);
   if (hours % 24 === 0) {
     return `${hours / 24} day(s)`;
@@ -28,22 +27,27 @@ const INTERVAL_IN_MS = INTERVAL_IN_HOURS * 60 * 60 * 1000;
   }
 };
 
+// Helper to format date in Paris timezone
 const formatDate = (timestamp) =>
   new Date(timestamp).toLocaleString("fr-FR", { timeZone: "Europe/Paris" });
 
-const intervalReadable = msToHumanReadable(INTERVAL_IN_MS);
-const nextExecution = formatDate(Date.now() + INTERVAL_IN_MS);
+(async () => {
+  console.log("Initial bot launch...");
+  // Uncomment to run immediately at startup
+  //await getAllChannelActivity(app);
 
-console.log(`✅ Your bot is running every ${intervalReadable} - next review at ${nextExecution}`);
+  const intervalReadable = msToHumanReadable(INTERVAL_IN_MS);
+  const nextExecution = formatDate(Date.now() + INTERVAL_IN_MS);
+  console.log(`✅ Your bot is running every ${intervalReadable} - next review at ${nextExecution}`);
 
-  
-  // Lancer automatiquement toutes les semaines
+  // Schedule the report at the defined interval
   setInterval(async () => {
-    console.log("Lancement hebdomadaire du bot...");
-    await getAllChannelActivity(app);
+    console.log("Weekly bot launch...");
+  //await getAllChannelActivity(app);
   }, INTERVAL_IN_MS);
 })();
 
+// Express server to keep the bot alive (for platforms like Glitch)
 const express = require("express");
 const appExpress = express();
 const PORT = process.env.PORT || 3000;
