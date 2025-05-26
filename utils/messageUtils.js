@@ -1,23 +1,26 @@
+/**
+ * Sends a private message to a user.
+ * @param {App} app - Slack Bolt app instance
+ * @param {string} userId - Slack user ID
+ * @param {string} message - Message to send
+ */
 async function sendPrivateMessage(app, userId, message) {
   try {
-    // Récupérer les informations de l'utilisateur pour le nom (optionnel)
+    // Retrieve user info (optional, for logging)
     const userInfo = await app.client.users.info({ user: userId });
     const userName = userInfo.user.profile.display_name || userInfo.user.real_name || userInfo.user.name;
 
-    // Ouvrir une conversation directe avec l'utilisateur
-    const conversation = await app.client.conversations.open({
-      users: userId
-    });
+    // Open a direct conversation with the user
+    const conversation = await app.client.conversations.open({ users: userId });
 
-    // Envoyer le message dans la conversation directe
+    // Send the message in the direct conversation
     await app.client.chat.postMessage({
       channel: conversation.channel.id,
       text: message,
     });
 
-    // Log détaillé avec le contenu et l'heure du message envoyé
-    console.log(`Message sent to ${userName} (User ID : ${userId}) in ${conversation.channel.id}:\n${message}`);
-
+    // Detailed log with content and time
+    console.log(`Message sent to ${userName} (User ID: ${userId}) in ${conversation.channel.id}:\n${message}`);
   } catch (error) {
     console.error(`Error sending message to user ${userId}:`, error);
   }

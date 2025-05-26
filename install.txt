@@ -1,0 +1,10 @@
+API Slack
+
+https://api.slack.com/apps/A08SLN2TZRV
+
+Install App > Install to Dailymotion
+
+
+Utilisateurs
+
+Slack > Applications > Ajouter des applications > "Slack channel monitor"
