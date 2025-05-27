@@ -1,6 +1,35 @@
+/**
+ * ===========================
+ *   Dailymotion Slack Bot
+ *   utils/channelUtils.js
+ * ===========================
+ *
+ * Main logic for fetching, filtering, and processing Slack channels created by Support members.
+ * - Lists all public, non-archived channels (with pagination).
+ * - Filters channels by creator (SUPPORT_USER_IDS from config).
+ * - Caches non-support channels in memory for performance.
+ * - Ensures the bot is a member of each relevant channel.
+ * - Gathers inactivity data and sends a report to each Support member.
+ *
+ * Rate limiting:
+ * - Slack API rate limits are handled via the rateLimiter utility (see usage below).
+ *
+ * Configurable elements (in config.js):
+ * - SUPPORT_USER_IDS
+ * - LOG_MESSAGES
+ * - INACTIVITY_THRESHOLDS
+ *
+ * Author: Celia Longlade
+ * Last updated: 2025-05-26
+ */
 const { sendPrivateMessage } = require("./messageUtils");
 const { SUPPORT_USER_IDS, LOG_MESSAGES, INACTIVITY_THRESHOLDS } = require("../config");
 const nonSupportCache = require("./nonSupportCache");
+const { slackApiCallWithRateLimit } = require("./rateLimiter");
+
+
+// In-memory cache for user names to avoid redundant API calls
+const userNameCache = {};
 
 /**
  * Main function to gather activity for all channels created by users in SUPPORT_USER_IDS.
@@ -11,36 +40,33 @@ async function getAllChannelActivity(app) {
 
   try {
     console.log(LOG_MESSAGES.FETCH_LIST);
-let allChannels = [];
-let cursor;
 
-do {
-  const result = await app.client.conversations.list({
-    types: "public_channel",
-    limit: 1000,
-    cursor,
-    exclude_archived: true,
-  });
+    // Fetch all public, non-archived channels with pagination
+    let allChannels = [];
+    let cursor;
+    do {
+      const result = await app.client.conversations.list({
+        types: "public_channel",
+        limit: 1000,
+        cursor,
+        exclude_archived: true,
+      });
 
-  allChannels = allChannels.concat(result.channels);
+      allChannels = allChannels.concat(result.channels);
 
-  cursor = result.response_metadata?.next_cursor;
-} while (cursor);
+      cursor = result.response_metadata?.next_cursor;
+    } while (cursor);
 
-// Ici, tu utilises allChannels pour la suite
-console.log("Channels returned by conversations.list:");
-console.log(LOG_MESSAGES.RETRIEVE_LIST(allChannels.length));
-/*allChannels.forEach(c =>
-  console.log(`- ${c.name} (ID: ${c.id}) | creator: ${c.creator} | created: ${new Date(c.created * 1000).toISOString()}`)
-);*/
-    // Map to group channels by creator 
+    console.log(LOG_MESSAGES.RETRIEVE_LIST(allChannels.length));
+
+    // Group channels by creator (only Support members)
     const creatorRoomsMap = new Map();
 
     for (const channel of allChannels) {
-        if (nonSupportCache.has(channel.id)) {
-          console.log(`⏭️ Skipping channel ${channel.name} (ID: ${channel.id}) - previously marked as non-support`);
-          continue;
-        }
+      if (nonSupportCache.has(channel.id)) {
+        console.log(`⏭️ Skipping channel ${channel.name} (ID: ${channel.id}) - previously marked as non-support`);
+        continue;
+      }
       //console.log(`🔍 Checking channel: ${channel.name} (ID: ${channel.id}), created by ${channel.creator}`);
       // 1. Check if the channel is public (already filtered by conversations.list)
       // 2. Check if the creator is a Support member
@@ -48,6 +74,7 @@ console.log(LOG_MESSAGES.RETRIEVE_LIST(allChannels.length));
       if (SUPPORT_USER_IDS.includes(channel.creator)) {
         const creatorName = await getUserName(app, channel.creator);
         console.log(`🔍 Channel ${channel.name} (ID: ${channel.id}) belongs to ${creatorName} (ID: ${channel.creator})`);
+        
         if (!creatorRoomsMap.has(channel.creator)) {
           creatorRoomsMap.set(channel.creator, []);
         }
@@ -57,9 +84,6 @@ console.log(LOG_MESSAGES.RETRIEVE_LIST(allChannels.length));
         console.log(`🚫 Channel ${channel.name} (ID: ${channel.id}) is not created by a support member. Marked as non-support.`);
       }
     }
-    
-    //reset cache
-    nonSupportCache.reset();
     
     console.log(`📌 Found ${creatorRoomsMap.size} unique creators.`);
 
@@ -76,14 +100,25 @@ console.log(LOG_MESSAGES.RETRIEVE_LIST(allChannels.length));
 }
 
 /**
- * Fetches the real name of a user by userId.
+ * Fetches the real name of a user by userId, with in-memory cache.
+ * @param {App} app - Slack Bolt app instance
+ * @param {string} userId - Slack user ID
+ * @returns {Promise<string>}
  */
 async function getUserName(app, userId) {
+  if (userNameCache[userId]) {
+    return userNameCache[userId];
+  }
   console.log(`🚀 [START] getUserName(userId: ${userId})`);
   try {
-    const response = await app.client.users.info({ user: userId });
-    console.log(`✅ Retrieved user info: ${response.user.real_name} (${response.user.name})`);
-    return response.user.real_name || response.user.name;
+    const response = await slackApiCallWithRateLimit(
+      (...args) => app.client.users.info(...args),
+      { user: userId }
+    );
+    const name = response.user.real_name || response.user.name;
+    userNameCache[userId] = name;
+    console.log(`✅ Retrieved user info: ${name} (${response.user.name})`);
+    return name;
   } catch (error) {
     console.error(`❌ Error retrieving name for user ${userId}:`, error);
     return `User_${userId}`;
@@ -92,44 +127,63 @@ async function getUserName(app, userId) {
 
 /**
  * Ensures the bot is in all channels for a user, then sends the activity report.
+ * @param {App} app - Slack Bolt app instance
+ * @param {string} userId - Slack user ID
+ * @param {Array} channels - Array of channel objects
  */
 async function processUserChannels(app, userId, channels) {
-  console.log(`👤 [START] Processing channels for user: ${userId} (${channels.length} channels)`);
-  try {
-    const userInfo = await app.client.users.info({ user: userId });
-    console.log(`✅ ${LOG_MESSAGES.GROUP_CHECK} (User ID: ${userId})`);
+  const { LOG_MESSAGES } = require("../config");
+  const userName = await getUserName(app, userId);
 
+  console.log(LOG_MESSAGES.GROUP_CHECK(userName, userId));
+
+  try {
     for (const channel of channels) {
-      console.log(`🔎 Checking if bot is in channel: ${channel.name} (ID: ${channel.id})`);
+      console.log(LOG_MESSAGES.BOT_CHECK(channel.name, channel.id));
       const botInChannel = await isBotInChannel(app, channel.id);
 
       if (!botInChannel) {
-        console.log(`➕ Adding bot to channel: ${channel.name}`);
-        await app.client.conversations.join({ channel: channel.id });
+        try {
+          await slackApiCallWithRateLimit(
+            (...args) => app.client.conversations.join(...args),
+            { channel: channel.id }
+          );
+          console.log(LOG_MESSAGES.BOT_JOINED(channel.name, channel.id));
+        } catch (err) {
+          console.error(LOG_MESSAGES.BOT_JOIN_FAILED(channel.name, channel.id, err.data?.error || err.message));
+          continue; // Skip activity processing for this channel
+        }
       } else {
-        console.log(`✔️ Bot already in channel: ${channel.name}`);
+        console.log(LOG_MESSAGES.BOT_ALREADY_PRESENT(channel.name));
       }
     }
 
-    console.log(`📊 Generating activity report for user: ${userId}`);
+    console.log(LOG_MESSAGES.GENERATE_REPORT(userId));
     await getChannelActivityForUser(app, userId, channels);
-
-    console.log(`✅ [END] processUserChannels for user: ${userId}`);
+    console.log(LOG_MESSAGES.END_PROCESS_USER(userId));
   } catch (error) {
-    console.error(`❌ Error in processUserChannels for user ${userId}:`, error);
+    console.error(LOG_MESSAGES.ERROR_PROCESS_USER(userId, error));
   }
 }
 
 /**
  * Checks if the bot is a member of a given channel.
+ * @param {App} app - Slack Bolt app instance
+ * @param {string} channelId - Slack channel ID
+ * @returns {Promise<boolean>}
  */
 async function isBotInChannel(app, channelId) {
-  console.log(`🛠 Checking if bot is in channel: ${channelId}`);
+  //console.log(`🛠 Checking if bot is in channel: ${channelId}`);
   try {
-    const members = await app.client.conversations.members({ channel: channelId });
-    const botUserId = await app.client.auth.test();
-    const isPresent = members.members.includes(botUserId.user_id);
-    console.log(`🔍 Bot ${isPresent ? "IS" : "IS NOT"} in channel ${channelId}`);
+    const members = await slackApiCallWithRateLimit(
+      (...args) => app.client.conversations.members(...args),
+      { channel: channelId }
+    );
+    const botUserId = (await slackApiCallWithRateLimit(
+      (...args) => app.client.auth.test(...args)
+    )).user_id;
+    const isPresent = members.members.includes(botUserId);
+    //console.log(`🔍 Bot ${isPresent ? "IS" : "IS NOT"} in channel ${channelId}`);
     return isPresent;
   } catch (error) {
     console.error(`❌ Error checking bot membership in channel ${channelId}:`, error);
@@ -137,11 +191,19 @@ async function isBotInChannel(app, channelId) {
   }
 }
 
+
 /**
  * Gathers activity for each channel and sends a report to the user.
+ * @param {App} app - Slack Bolt app instance
+ * @param {string} userId - Slack user ID
+ * @param {Array} channels - Array of channel objects
  */
 async function getChannelActivityForUser(app, userId, channels) {
-  console.log(`📊 [START] Gathering activity report for user: ${userId}`);
+  const { INACTIVITY_THRESHOLDS, LOG_MESSAGES } = require("../config");
+  const { REPORT_MESSAGE_TEMPLATE, ACTIVITY_BLOCK_TEMPLATE } = require("../config");
+
+  console.log(LOG_MESSAGES.START_ACTIVITY_REPORT(userId));
+
   try {
     const now = Date.now();
     const reportDate = new Date();
@@ -149,19 +211,20 @@ async function getChannelActivityForUser(app, userId, channels) {
     const formattedTime = reportDate.toLocaleTimeString();
     const userName = await getUserName(app, userId);
 
-    console.log(`👤 Preparing report for: ${userName} (ID: ${userId})`);
+    console.log(LOG_MESSAGES.PREPARE_REPORT(userName, userId));
 
     // Prepare activity groups based on inactivity thresholds
     const groupedActivity = {};
     INACTIVITY_THRESHOLDS.forEach(t => groupedActivity[`${t.days}+`] = { emoji: t.emoji, channels: [] });
 
     for (const channel of channels) {
-      console.log(`📡 Fetching history for channel: ${channel.name} (ID: ${channel.id})`);
+      console.log(LOG_MESSAGES.FETCH_HISTORY(channel.name, channel.id));
+
       try {
-        const history = await app.client.conversations.history({
-          channel: channel.id,
-          limit: 100,
-        });
+        const history = await slackApiCallWithRateLimit(
+          (...args) => app.client.conversations.history(...args),
+          { channel: channel.id, limit: 100 }
+        );
 
         // Filter out join messages
         const filteredMessages = history.messages.filter(
@@ -172,11 +235,11 @@ async function getChannelActivityForUser(app, userId, channels) {
         if (filteredMessages.length > 0) {
           const lastMessageTime = new Date(parseFloat(filteredMessages[0].ts) * 1000).getTime();
           daysSinceLastMessage = (now - lastMessageTime) / (1000 * 60 * 60 * 24);
-          console.log(`📅 Last message in ${channel.name} was ${Math.round(daysSinceLastMessage)} days ago`);
+          console.log(LOG_MESSAGES.LAST_MESSAGE(channel.name, Math.round(daysSinceLastMessage)));
         } else {
           const creationDate = new Date(channel.created * 1000).getTime();
           daysSinceLastMessage = (now - creationDate) / (1000 * 60 * 60 * 24);
-          console.log(`📅 No messages found in ${channel.name}, channel created ${Math.round(daysSinceLastMessage)} days ago`);
+          console.log(LOG_MESSAGES.NO_MESSAGE(channel.name, Math.round(daysSinceLastMessage)));
         }
 
         const channelLink = `<slack://channel?id=${channel.id}|#${channel.name}> - inactive for ${Math.round(daysSinceLastMessage)} days`;
@@ -189,25 +252,41 @@ async function getChannelActivityForUser(app, userId, channels) {
           }
         }
       } catch (error) {
-        console.error(`❌ Error retrieving history for channel ${channel.name}:`, error);
+        console.error(LOG_MESSAGES.ERROR_HISTORY(channel.name, error));
       }
     }
 
     // Build the report message
-    let message = `Hi ${userName}! Here is your Slack room activity report:\n\n`;
+/*    let message = `Hi ${userName}! Here is your Slack room activity report:\n\n`;
     for (const [key, value] of Object.entries(groupedActivity)) {
       if (value.channels.length > 0) {
         message += `${value.emoji} Inactive for ${key} days:\n\t${value.channels.join("\n\t")}\n\n`;
       }
     }
     message += `Report generated on ${formattedDate} - ${formattedTime}.`;
+*/
+    let activityBlocks = "";
+for (const [key, value] of Object.entries(groupedActivity)) {
+  if (value.channels.length > 0) {
+    activityBlocks += ACTIVITY_BLOCK_TEMPLATE({
+      emoji: value.emoji,
+      key,
+      channels: value.channels
+    });
+  }
+}
 
-    console.log(`📨 Sending report to ${userId}`);
+let message = REPORT_MESSAGE_TEMPLATE({
+  userName,
+  activityBlocks,
+  date: formattedDate,
+  time: formattedTime
+});
     await sendPrivateMessage(app, userId, message);
 
-    console.log(`✅ [END] Activity report sent to ${userId}`);
+    console.log(LOG_MESSAGES.END_ACTIVITY_REPORT(userId));
   } catch (error) {
-    console.error(`❌ Error in getChannelActivityForUser for user ${userId}:`, error);
+    console.error(LOG_MESSAGES.ERROR_ACTIVITY_REPORT(userId, error));
   }
 }
 

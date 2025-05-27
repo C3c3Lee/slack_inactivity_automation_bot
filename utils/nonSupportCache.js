@@ -1,4 +1,25 @@
-// utils/nonSupportCache.js
+/**
+ * ===========================
+ *   Dailymotion Slack Bot
+ *   utils/nonSupportCache.js
+ * ===========================
+ *
+ * In-memory cache for non-support channel IDs.
+ *
+ * - Used to store the IDs of channels that are not created by Support members,
+ *   so they can be skipped in subsequent runs for performance.
+ * - The cache is volatile: it is reset on process restart or by calling reset().
+ * - Not persisted between runs (by design).
+ *
+ * Usage:
+ *   - add(channelId): Add a channel ID to the cache.
+ *   - has(channelId): Check if a channel ID is in the cache.
+ *   - reset(): Clear all entries from the cache (manual or via a dedicated script).
+ *   - size(): Get the current size of the cache.
+ *
+ * Author: Celia Longlade
+ * Last updated: 2025-05-26
+ */
 
 // In-memory cache for non-support channel IDs
 const nonSupportChannelIds = new Set();
