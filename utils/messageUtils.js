@@ -11,12 +11,12 @@
  * - Logs the action with user and channel info
  * - All log messages are centralized in config.js for consistency
  *
- * Author: Celia Longlade
+ * Author: Celia Longlade & AI pair programmer
  * Last updated: 2025-05-26
  */
 
 const { LOG_MESSAGES } = require("../config");
-
+const { logToFile } = require("./logger"); 
 /**
  * Sends a private message to a user.
  * @param {App} app - Slack Bot app instance
@@ -42,11 +42,11 @@ async function sendPrivateMessage(app, userId, message) {
     });
 
     // Log with content and time (centralized in config.js)
-    console.log(
+    logToFile(
       LOG_MESSAGES.MESSAGE_SENT(userName, userId, conversation.channel.id)
     );
   } catch (error) {
-    console.error(LOG_MESSAGES.ERROR_SEND_DM(userId, error));
+    logToFile(LOG_MESSAGES.ERROR_SEND_DM(userId, error));
   }
 }
 

@@ -1,10 +1,24 @@
-API Slack
+>> API Slack <<
 
 https://api.slack.com/apps/A08SLN2TZRV
 
 Install App > Install to Dailymotion
 
 
-Utilisateurs
+>> Utilisateurs <<
 
 Slack > Applications > Ajouter des applications > "Slack channel monitor"
+
+>> points d'amélioration <<
+- Optimisation de la fréquence d’exécution (actuellement, la stabilité du scheduling doit être renforcée).
+- Ouverture du bot aux canaux privés (optionnel, si besoins et autorisations admin).
+- Possibilité d’étendre le monitoring aux DM de groupe (MPIM. Optionnel, si besoins et autorisations admin).
+- Amélioration continue de la robustesse, des logs et de la gestion du rate limit Slack.
+- Documentation utilisateur/admin à venir
+- externaliser les logs pour garder une trace
+- compter / logger les call API
+- remplacer la liste en dur par l'ID du groupe Support (plus simple si d'autres membres s'ajoutent au groupe 
+  ou si d'autres groupes veulent utiliser l'app)
+
+>> FAQ <<
+- Est-ce que l'ajout de l'app est automatique quand je lance le bot ou doit être ajouté au préalable par les utilisateurs ?

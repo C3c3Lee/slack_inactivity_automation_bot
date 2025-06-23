@@ -19,13 +19,14 @@
  * - LOG_MESSAGES
  * - INACTIVITY_THRESHOLDS
  *
- * Author: Celia Longlade
- * Last updated: 2025-05-26
+ * Author: Celia Longlade & AI pair programmer
+ * Last updated: 2025-06-04
  */
 const { sendPrivateMessage } = require("./messageUtils");
 const { SUPPORT_USER_IDS, LOG_MESSAGES, INACTIVITY_THRESHOLDS } = require("../config");
 const nonSupportCache = require("./nonSupportCache");
 const { slackApiCallWithRateLimit } = require("./rateLimiter");
+const { logToFile } = require("./logger"); 
 
 
 // In-memory cache for user names to avoid redundant API calls
@@ -36,10 +37,10 @@ const userNameCache = {};
  * @param {App} app - Slack Bolt app instance
  */
 async function getAllChannelActivity(app) {
-  console.log(LOG_MESSAGES.FUNCTION_START);
+  logToFile(LOG_MESSAGES.FUNCTION_START);
 
   try {
-    console.log(LOG_MESSAGES.FETCH_LIST);
+    logToFile(LOG_MESSAGES.FETCH_LIST);
 
     // Fetch all public, non-archived channels with pagination
     let allChannels = [];
@@ -57,14 +58,14 @@ async function getAllChannelActivity(app) {
       cursor = result.response_metadata?.next_cursor;
     } while (cursor);
 
-    console.log(LOG_MESSAGES.RETRIEVE_LIST(allChannels.length));
+    logToFile(LOG_MESSAGES.RETRIEVE_LIST(allChannels.length));
 
     // Group channels by creator (only Support members)
     const creatorRoomsMap = new Map();
 
     for (const channel of allChannels) {
       if (nonSupportCache.has(channel.id)) {
-        console.log(`⏭️ Skipping channel ${channel.name} (ID: ${channel.id}) - previously marked as non-support`);
+        logToFile(`⏭️ Skipping channel ${channel.name} (ID: ${channel.id}) - previously marked as non-support`);
         continue;
       }
       //console.log(`🔍 Checking channel: ${channel.name} (ID: ${channel.id}), created by ${channel.creator}`);
@@ -73,7 +74,7 @@ async function getAllChannelActivity(app) {
       // Only consider channels created by users in SUPPORT_USER_IDS
       if (SUPPORT_USER_IDS.includes(channel.creator)) {
         const creatorName = await getUserName(app, channel.creator);
-        console.log(`🔍 Channel ${channel.name} (ID: ${channel.id}) belongs to ${creatorName} (ID: ${channel.creator})`);
+        logToFile(`🔍 Channel ${channel.name} (ID: ${channel.id}) belongs to ${creatorName} (ID: ${channel.creator})`);
         
         if (!creatorRoomsMap.has(channel.creator)) {
           creatorRoomsMap.set(channel.creator, []);
@@ -81,21 +82,21 @@ async function getAllChannelActivity(app) {
         creatorRoomsMap.get(channel.creator).push(channel);
       } else {
         nonSupportCache.add(channel.id);
-        console.log(`🚫 Channel ${channel.name} (ID: ${channel.id}) is not created by a support member. Marked as non-support.`);
+        logToFile(`🚫 Channel ${channel.name} (ID: ${channel.id}) is not created by a support member. Marked as non-support.`);
       }
     }
     
-    console.log(`📌 Found ${creatorRoomsMap.size} unique creators.`);
+    logToFile(`📌 Found ${creatorRoomsMap.size} unique creators.`);
 
     // For each creator, process their channels
     for (const [creatorId, channels] of creatorRoomsMap) {
-      console.log(`📨 Processing ${channels.length} channels for creator: ${creatorId}`);
+      logToFile(`📨 Processing ${channels.length} channels for creator: ${creatorId}`);
       await processUserChannels(app, creatorId, channels);
     }
 
-    console.log(`✅ [END] getAllChannelActivity()`);
+    logToFile(`✅ [END] getAllChannelActivity()`);
   } catch (error) {
-    console.error("❌ Error while retrieving channel list:", error);
+    logToFile("❌ Error while retrieving channel list:", error);
   }
 }
 
@@ -109,7 +110,7 @@ async function getUserName(app, userId) {
   if (userNameCache[userId]) {
     return userNameCache[userId];
   }
-  console.log(`🚀 [START] getUserName(userId: ${userId})`);
+  logToFile(`🚀 [START] getUserName(userId: ${userId})`);
   try {
     const response = await slackApiCallWithRateLimit(
       (...args) => app.client.users.info(...args),
@@ -117,10 +118,10 @@ async function getUserName(app, userId) {
     );
     const name = response.user.real_name || response.user.name;
     userNameCache[userId] = name;
-    console.log(`✅ Retrieved user info: ${name} (${response.user.name})`);
+    logToFile(`✅ Retrieved user info: ${name} (${response.user.name})`);
     return name;
   } catch (error) {
-    console.error(`❌ Error retrieving name for user ${userId}:`, error);
+    logToFile(`❌ Error retrieving name for user ${userId}:`, error);
     return `User_${userId}`;
   }
 }
@@ -135,11 +136,11 @@ async function processUserChannels(app, userId, channels) {
   const { LOG_MESSAGES } = require("../config");
   const userName = await getUserName(app, userId);
 
-  console.log(LOG_MESSAGES.GROUP_CHECK(userName, userId));
+  logToFile(LOG_MESSAGES.GROUP_CHECK(userName, userId));
 
   try {
     for (const channel of channels) {
-      console.log(LOG_MESSAGES.BOT_CHECK(channel.name, channel.id));
+      logToFile(LOG_MESSAGES.BOT_CHECK(channel.name, channel.id));
       const botInChannel = await isBotInChannel(app, channel.id);
 
       if (!botInChannel) {
@@ -148,21 +149,21 @@ async function processUserChannels(app, userId, channels) {
             (...args) => app.client.conversations.join(...args),
             { channel: channel.id }
           );
-          console.log(LOG_MESSAGES.BOT_JOINED(channel.name, channel.id));
+          logToFile(LOG_MESSAGES.BOT_JOINED(channel.name, channel.id));
         } catch (err) {
-          console.error(LOG_MESSAGES.BOT_JOIN_FAILED(channel.name, channel.id, err.data?.error || err.message));
+          logToFile(LOG_MESSAGES.BOT_JOIN_FAILED(channel.name, channel.id, err.data?.error || err.message));
           continue; // Skip activity processing for this channel
         }
       } else {
-        console.log(LOG_MESSAGES.BOT_ALREADY_PRESENT(channel.name));
+        logToFile(LOG_MESSAGES.BOT_ALREADY_PRESENT(channel.name));
       }
     }
 
-    console.log(LOG_MESSAGES.GENERATE_REPORT(userId));
+    logToFile(LOG_MESSAGES.GENERATE_REPORT(userId));
     await getChannelActivityForUser(app, userId, channels);
-    console.log(LOG_MESSAGES.END_PROCESS_USER(userId));
+    logToFile(LOG_MESSAGES.END_PROCESS_USER(userId));
   } catch (error) {
-    console.error(LOG_MESSAGES.ERROR_PROCESS_USER(userId, error));
+    logToFile(LOG_MESSAGES.ERROR_PROCESS_USER(userId, error));
   }
 }
 
@@ -186,7 +187,7 @@ async function isBotInChannel(app, channelId) {
     //console.log(`🔍 Bot ${isPresent ? "IS" : "IS NOT"} in channel ${channelId}`);
     return isPresent;
   } catch (error) {
-    console.error(`❌ Error checking bot membership in channel ${channelId}:`, error);
+    logToFile(`❌ Error checking bot membership in channel ${channelId}:`, error);
     return false;
   }
 }
@@ -202,7 +203,7 @@ async function getChannelActivityForUser(app, userId, channels) {
   const { INACTIVITY_THRESHOLDS, LOG_MESSAGES } = require("../config");
   const { REPORT_MESSAGE_TEMPLATE, ACTIVITY_BLOCK_TEMPLATE } = require("../config");
 
-  console.log(LOG_MESSAGES.START_ACTIVITY_REPORT(userId));
+  logToFile(LOG_MESSAGES.START_ACTIVITY_REPORT(userId));
 
   try {
     const now = Date.now();
@@ -211,14 +212,14 @@ async function getChannelActivityForUser(app, userId, channels) {
     const formattedTime = reportDate.toLocaleTimeString();
     const userName = await getUserName(app, userId);
 
-    console.log(LOG_MESSAGES.PREPARE_REPORT(userName, userId));
+    logToFile(LOG_MESSAGES.PREPARE_REPORT(userName, userId));
 
     // Prepare activity groups based on inactivity thresholds
     const groupedActivity = {};
     INACTIVITY_THRESHOLDS.forEach(t => groupedActivity[`${t.days}+`] = { emoji: t.emoji, channels: [] });
 
     for (const channel of channels) {
-      console.log(LOG_MESSAGES.FETCH_HISTORY(channel.name, channel.id));
+      logToFile(LOG_MESSAGES.FETCH_HISTORY(channel.name, channel.id));
 
       try {
         const history = await slackApiCallWithRateLimit(
@@ -228,22 +229,25 @@ async function getChannelActivityForUser(app, userId, channels) {
 
         // Filter out join messages
         const filteredMessages = history.messages.filter(
-          message => !message.subtype || message.subtype !== "channel_join"
+        //  message => !message.subtype || message.subtype !== "channel_join"
+          message => !message.subtype
         );
 
         let daysSinceLastMessage = 0;
         if (filteredMessages.length > 0) {
+        //  console.log(`[DEBUG] Last message ts for ${channel.name}: ${filteredMessages[0].ts}`);
           const lastMessageTime = new Date(parseFloat(filteredMessages[0].ts) * 1000).getTime();
           daysSinceLastMessage = (now - lastMessageTime) / (1000 * 60 * 60 * 24);
-          console.log(LOG_MESSAGES.LAST_MESSAGE(channel.name, Math.round(daysSinceLastMessage)));
+          logToFile(LOG_MESSAGES.LAST_MESSAGE(channel.name, Math.round(daysSinceLastMessage)));
         } else {
           const creationDate = new Date(channel.created * 1000).getTime();
           daysSinceLastMessage = (now - creationDate) / (1000 * 60 * 60 * 24);
-          console.log(LOG_MESSAGES.NO_MESSAGE(channel.name, Math.round(daysSinceLastMessage)));
+          logToFile(LOG_MESSAGES.NO_MESSAGE(channel.name, Math.round(daysSinceLastMessage)));
         }
 
-        const channelLink = `<slack://channel?id=${channel.id}|#${channel.name}> - inactive for ${Math.round(daysSinceLastMessage)} days`;
+        const channelLink = `<#${channel.id}> - inactive for ${Math.round(daysSinceLastMessage)} days`;
 
+        //console.log(`[DEBUG] Channel ${channel.name} (ID: ${channel.id}) daysSinceLastMessage: ${daysSinceLastMessage}`);
         // Assign channel to the correct inactivity group
         for (const threshold of INACTIVITY_THRESHOLDS) {
           if (daysSinceLastMessage > threshold.days) {
@@ -252,7 +256,7 @@ async function getChannelActivityForUser(app, userId, channels) {
           }
         }
       } catch (error) {
-        console.error(LOG_MESSAGES.ERROR_HISTORY(channel.name, error));
+        logToFile(LOG_MESSAGES.ERROR_HISTORY(channel.name, error));
       }
     }
 
@@ -284,9 +288,9 @@ let message = REPORT_MESSAGE_TEMPLATE({
 });
     await sendPrivateMessage(app, userId, message);
 
-    console.log(LOG_MESSAGES.END_ACTIVITY_REPORT(userId));
+    logToFile(LOG_MESSAGES.END_ACTIVITY_REPORT(userId));
   } catch (error) {
-    console.error(LOG_MESSAGES.ERROR_ACTIVITY_REPORT(userId, error));
+    logToFile(LOG_MESSAGES.ERROR_ACTIVITY_REPORT(userId, error));
   }
 }
 

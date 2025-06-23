@@ -1,26 +1,39 @@
 module.exports = {
   // Delay in milliseconds between messages to avoid Slack rate limits
   MESSAGE_DELAY: 1000,
-
   // Report interval in hours (modifiable for test/prod)
-  REPORT_INTERVAL_HOURS: 24 * 7, // default: 7 days
-
+  REPORT_INTERVAL_HOURS: 24,//24 * 7, // default: 7 days
+  //External log interval
+  LOG_FILE_PATTERN: 'weekly', // 'weekly', 'monthly', or 'single'
+    /**
+   * Log file name pattern (use [datetime] as a placeholder for the timestamp).
+   * Example: 'slack_inactivity_autobot_[datetime].log'
+   * The [datetime] placeholder will be replaced by the current date and time (YYYYMMDD-HHmmss).
+   */
+  LOG_FILE_NAME_PATTERN: 'slack_inactivity_autobot_[datetime].log',
+  //External log access
+  LOG_FILE_READONLY: false,    // true = set log file to read-only after write
+  // Directory where log files are stored.
+  //LOGS_DIR: '/Users/c.longlade/Documents/Slack_inactivity_autobot_log',
+  LOGS_DIR: './logs',
+  
   TIMEZONE: "Europe/Paris",
 
   // List of user IDs whose created channels should be monitored (Support team)
   SUPPORT_USER_IDS: [
-    // "U0KAKFUNA", // Giovanni Berthelot
-    // "U01HR0K29DL", // Cynthia Djiab
-    // "U0406LMSRJ8", // Jawad Wagam
-    // "UF90NEPRD", // Laurent Melchi
-    // "U03N3NNKWA0", // Morgane Le Rouzic
-    // "UA3GEGA2E", // Purnadi Kertonugroho
-    // "U087754PR6E", // Tristan Berger
+    "U0KAKFUNA", // Giovanni Berthelot
+    "U01HR0K29DL", // Cynthia Djiab
+    "U0406LMSRJ8", // Jawad Wagam
+    "UF90NEPRD", // Laurent Melchi
+    "U03N3NNKWA0", // Morgane Le Rouzic
+    "UA3GEGA2E", // Purnadi Kertonugroho
+    "U087754PR6E", // Tristan Berger
     "U02GC00G6SJ" // Célia Longlade (for test purpose)
   ],
 
   // Inactivity thresholds (in days) and associated emoji
   INACTIVITY_THRESHOLDS: [
+    { days: 100, emoji: ":black_circle:" },
     { days: 60, emoji: ":red_circle:" },
     { days: 30, emoji: ":large_orange_circle:" },
     { days: 15, emoji: ":large_yellow_circle:" },
@@ -55,7 +68,7 @@ module.exports = {
     ERROR_ACTIVITY_REPORT: (userId, error) => `❌ Error in getChannelActivityForUser for user ${userId}: ${error}`,
     ERROR_HISTORY: (channelName, error) => `❌ Error retrieving history for channel ${channelName}: ${error}`,  MESSAGE_SENT: (userName, userId, channelId) =>
     `📨 Message sent to ${userName} (User ID: ${userId}) in ${channelId}`,
-  ERROR_SEND_DM: (userId, error) =>
+    ERROR_SEND_DM: (userId, error) =>
     `❌ Error sending message to user ${userId}: ${error}`,
 
   }

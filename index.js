@@ -20,7 +20,7 @@
  *
  * Express is used to keep the bot alive on platforms like Glitch.
  *
- * Author: Celia Longlade
+ * Author: Celia Longlade & AI pair programmer
  * Last updated: 2025-05-26
  */
 const { App, LogLevel } = require("@slack/bolt");
@@ -29,6 +29,8 @@ require("dotenv").config();
 const express = require("express");
 const { getAllChannelActivity } = require("./utils/channelUtils");
 const { LOG_MESSAGES, REPORT_INTERVAL_HOURS, TIMEZONE } = require("./config");
+
+const { logToFile } = require("./utils/logger"); 
 
 // Initialize Slack Bolt app
 const app = new App({
@@ -80,7 +82,7 @@ const formatDate = (timestamp) =>
 
   // Schedule the report at the defined interval
   setInterval(async () => {
-    console.log("Weekly bot launch...");
+    logToFile("Weekly bot launch...");
   //await getAllChannelActivity(app);
   }, INTERVAL_IN_MS);
 })();

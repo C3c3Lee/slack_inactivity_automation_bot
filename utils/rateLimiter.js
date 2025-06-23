@@ -15,7 +15,7 @@
  *     { channel: channel.id, limit: 100 }
  *   );
  *
- * Author: Celia Longlade
+ * Author: Celia Longlade & AI pair programmer
  * Last updated: 2025-05-26
  */
 
