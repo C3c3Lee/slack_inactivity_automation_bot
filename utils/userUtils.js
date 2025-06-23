@@ -15,18 +15,20 @@
  *   const resetNonSupportCache = require('./utils/resetNonSupportCache');
  *   resetNonSupportCache();
  *
- * Author: Celia Longlade
+ * Author: Celia Longlade & AI pair programmer
  * Last updated: 2025-05-26
  */
 
 const nonSupportCache = require('./nonSupportCache');
+
+const { logToFile } = require("./logger"); 
 
 /**
  * Resets the nonSupportChannelIds cache.
  */
 function resetNonSupportCache() {
   nonSupportCache.reset();
-  console.log("🧹 nonSupportChannelIds cache has been reset (manual action).");
+  logToFile("🧹 nonSupportChannelIds cache has been reset (manual action).");
 }
 
 module.exports = resetNonSupportCache;

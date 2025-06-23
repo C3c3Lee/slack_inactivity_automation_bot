@@ -17,12 +17,14 @@
  *   - reset(): Clear all entries from the cache (manual or via a dedicated script).
  *   - size(): Get the current size of the cache.
  *
- * Author: Celia Longlade
+ * Author: Celia Longlade & AI pair programmer
  * Last updated: 2025-05-26
  */
 
 // In-memory cache for non-support channel IDs
 const nonSupportChannelIds = new Set();
+
+const { logToFile } = require("./logger"); 
 
 /**
  * Add a channel ID to the cache.
@@ -46,7 +48,7 @@ function has(channelId) {
  */
 function reset() {
   nonSupportChannelIds.clear();
-  console.log("🧹 nonSupportChannelIds cache has been reset!");
+  logToFile("🧹 nonSupportChannelIds cache has been reset!");
 }
 
 /**

@@ -15,23 +15,25 @@
  *   const { logBotPermissions } = require("./utils/auth");
  *   await logBotPermissions(app);
  *
- * Author: Celia Longlade
- * Last updated: 2025-05-26
+ * Author: Celia Longlade & AI pair programmer
+ * Last updated: 2025-06-04
  */
 
+const { logToFile } = require("./logger"); 
+
 async function logBotPermissions(app) {
-  console.log("2. Function: logBotPermissions()");
+  logToFile("2. Function: logBotPermissions()");
   try {
     const authResult = await app.client.auth.test();
     // Note: response_metadata.scopes may not always be present depending on the API version and token type.
     if (authResult.response_metadata && authResult.response_metadata.scopes) {
-      console.log("Bot Permissions (scopes):", authResult.response_metadata.scopes);
+      logToFile("Bot Permissions (scopes):", authResult.response_metadata.scopes);
     } else {
-      console.log("Bot Permissions: Could not retrieve scopes from response_metadata. Check your token type or Slack API version.");
-      console.log("Full auth.test result:", authResult);
+      logToFile("Bot Permissions: Could not retrieve scopes from response_metadata. Check your token type or Slack API version.");
+      logToFile("Full auth.test result:", authResult);
     }
   } catch (error) {
-    console.error("Error retrieving bot permissions:", error);
+    logToFile("Error retrieving bot permissions:", error);
   }
 }
 
